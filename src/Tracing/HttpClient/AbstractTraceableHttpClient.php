@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace Sentry\SentryBundle\Tracing\HttpClient;
 
-use GuzzleHttp\Psr7\Uri;
+use Http\Discovery\Psr17FactoryDiscovery;
+use Psr\Http\Message\UriFactoryInterface;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerInterface;
 use Sentry\State\HubInterface;
@@ -33,10 +34,16 @@ abstract class AbstractTraceableHttpClient implements HttpClientInterface, Reset
      */
     protected $hub;
 
+    /**
+     * @var UriFactoryInterface
+     */
+    protected $uriFactory;
+
     public function __construct(HttpClientInterface $client, HubInterface $hub)
     {
         $this->client = $client;
         $this->hub = $hub;
+        $this->uriFactory = Psr17FactoryDiscovery::findUriFactory();
     }
 
     /**
@@ -51,13 +58,12 @@ abstract class AbstractTraceableHttpClient implements HttpClientInterface, Reset
             $headers = $options['headers'] ?? [];
             $headers['sentry-trace'] = $parent->toTraceparent();
 
-            $uri = new Uri($url);
-            $partialUri = Uri::fromParts([
-                'scheme' => $uri->getScheme(),
-                'host' => $uri->getHost(),
-                'port' => $uri->getPort(),
-                'path' => $uri->getPath(),
-            ]);
+            $uri = $this->uriFactory->createUri($url);
+            $partialUri = $this->uriFactory->createUri()
+                ->withScheme($uri->getScheme())
+                ->withHost($uri->getHost())
+                ->withPort($uri->getPort())
+                ->withPath($uri->getPath());
 
             // Check if the request destination is allow listed in the trace_propagation_targets option.
             $client = $this->hub->getClient();
